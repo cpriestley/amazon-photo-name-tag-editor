@@ -31,8 +31,6 @@ public class Main {
 
         long photoCount;
 
-        Path file = Paths.get("src/main/resources/log.txt");
-
         // Set the path of the ChromeDriver
         System.setProperty("webdriver.chrome.driver", "src/main/resources/chromedriver_mac64/chromedriver");
 
@@ -48,14 +46,13 @@ public class Main {
 
         //Click on the Gianna Filter
         System.out.println("Clicking on Gianna Filter");
-        String xPath = "//div[@class='expandable-nav rename-menu']/button[.//div[@class='name' and text()='Gianna']]";
-        clickElement(driver, wait, xPath);
+        clickElementByParentSelectorAndChildText(driver, wait, "div.face-thumbnail","Gianna");
 
         // Get the number of photos to initialize the loop
         System.out.println("Getting the number of photos");
         WebElement counter;
+        String xPath = "//*[@id=\"people-detail\"]/header/div/div/span/div[2]/span";
         do {
-            xPath = "//*[@id=\"people-detail\"]/header/div/div/span/div[2]/span";
             wait.until(ExpectedConditions.and(
                     presenceOfElementLocated(By.xpath(xPath)),
                     textMatches(By.xpath(xPath), Pattern.compile(".*photos$"))));
@@ -68,11 +65,19 @@ public class Main {
         xPath = "//*[@id=\"people-detail\"]/section/section/div/div/div[1]/div/div/div[1]/figure/div/a";
         clickElement(driver, wait, xPath);
 
+        logPhotoURLs(driver, wait);
+
+        identifyPhotosWithDuplicateNameTags(photoCount, driver, wait);
+    }
+
+    private static void identifyPhotosWithDuplicateNameTags(long photoCount, WebDriver driver, WebDriverWait wait) throws InterruptedException, IOException {
+        Path file = Paths.get("src/main/resources/log.md");
+        String xPath;
         System.out.println("Starting loop through photos");
-        for (int i = 0; i < photoCount; i++) {
-            if (i < 203) {
-                System.out.println("Skipping photo " + (i + 1));
-                Thread.sleep(600);
+        for (int i = 270; i < photoCount; i++) {
+            if (i < 270) {
+                System.out.println("Skipping photo " + (i + 1) + " | " + driver.getCurrentUrl());
+                Thread.sleep(400);
                 // Click next photo button
                 xPath = "//*[@id=\"people-detail\"]/section/section/section/div/a[@class='next']";
                 clickElement(driver, wait, xPath);
@@ -103,7 +108,6 @@ public class Main {
             //Break out of loop if no duplicates found
             if (count == 0) {
                 record = String.format("%s No duplicates found for photo", (i + 1));
-                System.out.println(record);
                 appendToLog(record, file);
 
                 // Click next photo button
@@ -125,8 +129,10 @@ public class Main {
             while (driver.findElement(By.xpath(xPath)).getText().length() < 1);
             String fileNameText = driver.findElement(By.xpath(xPath)).getText();
 
+             fileNameText = String.format("[%s](%s)", fileNameText, driver.getCurrentUrl());
+
             // Append details to log
-            record = String.format("%s File: %s\nPeople: %s\n", i + 1, fileNameText, sortedMap);
+            record = String.format("%s File: %s\n- People: %s", i + 1, fileNameText, sortedMap);
             appendToLog(record, file);
 
             //close info
@@ -171,6 +177,22 @@ public class Main {
         wait.until(ExpectedConditions.and(presenceOfElementLocated(byXpath), elementToBeClickable(byXpath)));
         WebElement button = driver.findElement(By.xpath(xPath));
         button.click();
+    }
+
+    private static void clickElementByParentSelectorAndChildText(WebDriver driver, WebDriverWait wait, String parentCss, String childText) {
+        By bySelector = By.cssSelector(parentCss);
+        wait.until(and(presenceOfElementLocated(bySelector), elementToBeClickable(bySelector)));
+        driver.findElements(bySelector).stream()
+                .filter(e -> e.getText().contains(childText))
+                .findFirst()
+                .ifPresent(WebElement::click);
+    }
+
+    private static void logPhotoURLs(WebDriver driver, WebDriverWait wait) throws IOException {
+        Path  file = Paths.get("src/main/resources/links.md");
+        String fileNameText = "";
+        String link = String.format("[%s](%s)", fileNameText, driver.getCurrentUrl());
+        Files.write(file, link.getBytes(), StandardOpenOption.APPEND);
     }
 
 }
