@@ -14,6 +14,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -27,7 +28,7 @@ public class Main {
 
     // Launch Chrome on a remote debugging port - `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222`
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws IOException {
 
         long photoCount;
 
@@ -46,7 +47,7 @@ public class Main {
 
         //Click on the Gianna Filter
         System.out.println("Clicking on Gianna Filter");
-        clickElementByParentSelectorAndChildText(driver, wait, "div.face-thumbnail","Gianna");
+        clickElementByParentSelectorAndChildText(driver, wait, "div.face-thumbnail", "Gianna");
 
         // Get the number of photos to initialize the loop
         System.out.println("Getting the number of photos");
@@ -61,13 +62,13 @@ public class Main {
         photoCount = Long.parseLong(counter.getText().split(" ")[0]);
 
         //Click on the first photo
-        System.out.println("Clicking on the first photo");
-        xPath = "//*[@id=\"people-detail\"]/section/section/div/div/div[1]/div/div/div[1]/figure/div/a";
-        clickElement(driver, wait, xPath);
+//        System.out.println("Clicking on the first photo");
+//        xPath = "//*[@id=\"people-detail\"]/section/section/div/div/div[1]/div/div/div[1]/figure/div/a";
+//        clickElement(driver, wait, xPath);
 
-        logPhotoURLs(driver, wait);
+        logPhotoURLs(driver, wait, photoCount);
 
-        identifyPhotosWithDuplicateNameTags(photoCount, driver, wait);
+        //identifyPhotosWithDuplicateNameTags(photoCount, driver, wait);
     }
 
     private static void identifyPhotosWithDuplicateNameTags(long photoCount, WebDriver driver, WebDriverWait wait) throws InterruptedException, IOException {
@@ -129,7 +130,7 @@ public class Main {
             while (driver.findElement(By.xpath(xPath)).getText().length() < 1);
             String fileNameText = driver.findElement(By.xpath(xPath)).getText();
 
-             fileNameText = String.format("[%s](%s)", fileNameText, driver.getCurrentUrl());
+            fileNameText = String.format("[%s](%s)", fileNameText, driver.getCurrentUrl());
 
             // Append details to log
             record = String.format("%s File: %s\n- People: %s", i + 1, fileNameText, sortedMap);
@@ -188,11 +189,72 @@ public class Main {
                 .ifPresent(WebElement::click);
     }
 
-    private static void logPhotoURLs(WebDriver driver, WebDriverWait wait) throws IOException {
-        Path  file = Paths.get("src/main/resources/links.md");
-        String fileNameText = "";
-        String link = String.format("[%s](%s)", fileNameText, driver.getCurrentUrl());
-        Files.write(file, link.getBytes(), StandardOpenOption.APPEND);
+    private static void logPhotoURLs(WebDriver driver, WebDriverWait wait, long photoCount) throws IOException {
+        Path file = Paths.get("src/main/resources/links.md");
+
+        List<String> fileStream = Files.readAllLines(file);
+        String lastLine = fileStream.get(fileStream.size() - 1);
+        String partialHref = getPartialHref(lastLine);
+        int startingPoint = fileStream.size();
+
+        returnToMostRecentPhoto(driver, wait, partialHref);
+
+        //Click on the info button
+        System.out.println("Clicking on the photo info button");
+        clickElement(driver, wait, "//*[@id=\"people-detail\"]/section/section/section/header/ul/li[5]/button");
+
+        for (int i = startingPoint; i < photoCount; i++) {
+            //Get file name
+            System.out.println("Getting file name from info box for photo " + (i + 1));
+            String xPath = "//*[@id=\"people-detail\"]/section/section/section/aside/div[2]/div[1]/div/span[1]";
+            do {
+                wait.until(
+                        and(presenceOfElementLocated(By.xpath(xPath)),
+                                textMatches(By.xpath(xPath), Pattern.compile(".*.jp.*g$", Pattern.CASE_INSENSITIVE))
+                        )
+                );
+            }
+            while (driver.findElement(By.xpath(xPath)).getText().length() < 1);
+            String fileNameText = driver.findElement(By.xpath(xPath)).getText();
+            appendToLog(String.format("[%s](%s)\n", fileNameText, driver.getCurrentUrl()), file);
+
+            // Click next photo button
+            xPath = "//*[@id=\"people-detail\"]/section/section/section/div/a[@class='next']";
+            clickElement(driver, wait, xPath);
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+
+    }
+
+    private static String getPartialHref(String lastLine) {
+        String regex = "gallery/(.+?)[?/]";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(lastLine);
+        String partialHref = "";
+        if (matcher.find()) {
+            partialHref = matcher.group(1);
+        }
+        return partialHref;
+    }
+
+    private static void returnToMostRecentPhoto(WebDriver driver, WebDriverWait wait, String partialHref) {
+        System.out.println("Returning to where we last left off");
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        List<WebElement> elements;
+        do {
+            js.executeScript("window.scrollBy(0,50)", "");
+            elements = driver.findElements(By.cssSelector("a[href*='" + partialHref + "']"));
+        } while (elements.size() == 0);
+        elements.get(0).click();
+
+        // Click next photo button
+        String xPath = "//*[@id=\"people-detail\"]/section/section/section/div/a[@class='next']";
+        clickElement(driver, wait, xPath);
     }
 
 }
